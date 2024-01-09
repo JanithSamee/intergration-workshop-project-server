@@ -1,8 +1,30 @@
 const UserModel = require("../models/user.model");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
-function login(req, res) {
-    res.json({ msg: "login okay" });
+const JWT_TOKEN = process.env.JWT_TOKEN;
+
+async function login(req, res) {
+    try {
+        const { username, password } = req.body;
+        const user = await UserModel.findOne({ username });
+
+        const isValid = await bcrypt.compare(password, user.password);
+
+        if (isValid) {
+            const token = jwt.sign(
+                { _id: user.id, username: user.username, email: user.email },
+                JWT_TOKEN,
+                { expiresIn: "10h" }
+            );
+            res.json({ token });
+        } else {
+            res.status(401).json({ msg: "Unauthorized" });
+        }
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: "Server side Error Occured" });
+    }
 }
 async function register(req, res) {
     try {
@@ -27,4 +49,24 @@ async function register(req, res) {
     }
 }
 
-module.exports = { login, register };
+async function getUserData(req, res) {
+    try {
+        const token = req.headers.authorization;
+
+        if (!token) {
+            return res.status(401).json({ msg: "Unauthorized" });
+        }
+
+        const _tokenData = token.split(" ")[1];
+
+        const _decoded = jwt.verify(_tokenData, JWT_TOKEN);
+        const id = _decoded._id;
+        const user = await UserModel.findById(id);
+        const { password, ...rest } = user._doc;
+        res.json({ user: rest });
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ msg: "Server side Error Occured" });
+    }
+}
+module.exports = { login, register, getUserData };
